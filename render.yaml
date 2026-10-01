@@ -6,6 +6,8 @@ services:
     name: log-monitoring-engine
     runtime: docker
     plan: free
+    # Same region as the Neon database (AWS us-east-2) to keep per-insert latency low.
+    region: ohio
     dockerfilePath: ./Dockerfile
     healthCheckPath: /actuator/health
     autoDeploy: true
