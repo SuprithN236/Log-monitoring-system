@@ -1,0 +1,25 @@
+# Active in the Docker image (SPRING_PROFILES_ACTIVE=prod). Placeholders without defaults make startup
+# fail fast when a secret or connection setting is missing, so local-dev defaults can never reach production.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      # Kept small to fit free-tier database connection limits.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+
+  rabbitmq:
+    # Full broker URI, e.g. CloudAMQP's amqps://user:pass@host/vhost (amqps enables TLS automatically).
+    addresses: ${RABBITMQ_URL}
+
+log-engine:
+  consumers:
+    critical:
+      max-concurrency: ${CRITICAL_MAX_CONSUMERS:4}
+    storage:
+      max-concurrency: ${STORAGE_MAX_CONSUMERS:2}
+  security:
+    ingest-api-key: ${INGEST_API_KEY}
+    dashboard-username: ${DASHBOARD_USERNAME:admin}
+    dashboard-password: ${DASHBOARD_PASSWORD}

@@ -1,0 +1,92 @@
+server:
+  # PORT is injected by hosting platforms such as Render; SERVER_PORT is for local overrides.
+  port: ${PORT:${SERVER_PORT:8080}}
+  shutdown: graceful
+  # Honour X-Forwarded-* headers from the host's TLS-terminating proxy.
+  forward-headers-strategy: framework
+  compression:
+    enabled: true
+
+spring:
+  application:
+    name: log-monitoring-engine
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/log_monitoring_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: log-engine-pool
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: 1
+      connection-timeout: 10000
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+    show-sql: false
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    connection-timeout: 10s
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2.0
+          max-interval: 10s
+
+log-engine:
+  consumers:
+    critical:
+      concurrency: ${CRITICAL_CONSUMERS:2}
+      max-concurrency: ${CRITICAL_MAX_CONSUMERS:8}
+      prefetch: 1
+    storage:
+      concurrency: ${STORAGE_CONSUMERS:2}
+      max-concurrency: ${STORAGE_MAX_CONSUMERS:4}
+      prefetch: 50
+  security:
+    # Local-development defaults only. The prod profile requires real values from the environment.
+    ingest-api-key: ${INGEST_API_KEY:local-dev-ingest-key}
+    dashboard-username: ${DASHBOARD_USERNAME:admin}
+    dashboard-password: ${DASHBOARD_PASSWORD:local-dev-password}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    com.logmonitoring.engine: INFO

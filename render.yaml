@@ -1,0 +1,26 @@
+# Render Blueprint: one free Docker web service. PostgreSQL and RabbitMQ are external
+# (e.g. Neon and CloudAMQP free tiers). Values marked `sync: false` are entered in the Render
+# dashboard and are never stored in git.
+services:
+  - type: web
+    name: log-monitoring-engine
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+    envVars:
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: RABBITMQ_URL
+        sync: false
+      - key: INGEST_API_KEY
+        generateValue: true
+      - key: DASHBOARD_USERNAME
+        value: admin
+      - key: DASHBOARD_PASSWORD
+        generateValue: true
