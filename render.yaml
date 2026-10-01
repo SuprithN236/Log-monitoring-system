@@ -22,7 +22,5 @@ services:
         sync: false
       - key: INGEST_API_KEY
         generateValue: true
-      - key: DASHBOARD_USERNAME
-        value: admin
-      - key: DASHBOARD_PASSWORD
+      - key: JWT_SECRET
         generateValue: true

@@ -74,8 +74,10 @@ log-engine:
   security:
     # Local-development defaults only. The prod profile requires real values from the environment.
     ingest-api-key: ${INGEST_API_KEY:local-dev-ingest-key}
-    dashboard-username: ${DASHBOARD_USERNAME:admin}
-    dashboard-password: ${DASHBOARD_PASSWORD:local-dev-password}
+    jwt-secret: ${JWT_SECRET:local-dev-jwt-secret-change-me-0123456789}
+    jwt-expiration: ${JWT_EXPIRATION:PT12H}
+    # Sign-in and sign-up attempts allowed per client IP per minute.
+    auth-attempts-per-minute: ${AUTH_ATTEMPTS_PER_MINUTE:10}
 
 management:
   endpoints:

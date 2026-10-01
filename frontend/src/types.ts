@@ -17,3 +17,15 @@ export interface LogSummary {
 
 /** INFO matches every log routed to storage as a standard trace (INFO and WARNING). */
 export type LogFilter = 'ALL' | 'CRITICAL' | 'INFO';
+
+export interface User {
+  id: number;
+  email: string;
+}
+
+export interface AuthSession {
+  token: string;
+  tokenType: string;
+  expiresInSeconds: number;
+  user: User;
+}

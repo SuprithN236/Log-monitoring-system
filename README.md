@@ -41,23 +41,36 @@ npm install
 npm run dev
 ```
 
-- Dashboard: `http://localhost:5173` (the dev proxy signs in for you)
+- Dashboard: `http://localhost:5173` (create an account on first visit)
 - API: `http://localhost:8080`
 - RabbitMQ dashboard: `http://localhost:15672` (guest / guest)
 - Health: `GET /actuator/health` (public)
 
 ## Authentication
 
-| Caller | Endpoint | Credential | Local default |
-|---|---|---|---|
-| Log producers | `POST /api/v1/logs/submit` | `X-API-Key` header | `local-dev-ingest-key` |
-| People | Dashboard and read API | HTTP Basic | `admin` / `local-dev-password` |
+| Caller | Endpoint | Credential |
+|---|---|---|
+| Log producers | `POST /api/v1/logs/submit` | `X-API-Key` header (local default `local-dev-ingest-key`) |
+| People | Dashboard and read API | Account sign-in, then `Authorization: Bearer <JWT>` |
+
+**Accounts:**
+- **Sign-up is open:** anyone who can reach the dashboard can create an account, and every account can read all logs.
+- **Passwords:** 8–72 characters, stored as BCrypt hashes. Emails are matched case-insensitively.
+- **Sessions:** a sign-in returns a JWT valid for 12 hours (`JWT_EXPIRATION`). The dashboard keeps it in `localStorage` and goes back to the sign-in page when it expires.
+- **Rate limit:** sign-in and sign-up allow 10 attempts per IP per minute (`AUTH_ATTEMPTS_PER_MINUTE`). Further attempts get `429` with a `Retry-After` header.
+- **Login check:** a sign-in takes the same time whether or not the email exists, so it doesn't reveal which emails have accounts.
 
 The two credentials are separate:
 - The ingest key can only submit logs. A producer that leaks it can't read anything.
-- The dashboard login can't submit logs.
+- A dashboard account can't submit logs.
 
-The local defaults only apply outside the `prod` profile. The Docker image runs with `prod`, and there the engine refuses to start unless `INGEST_API_KEY` and `DASHBOARD_PASSWORD` are set to values of at least 12 characters.
+The local defaults only apply outside the `prod` profile. The Docker image runs with `prod`, and there the engine refuses to start unless `INGEST_API_KEY` (12+ characters) and `JWT_SECRET` (32+ characters) are set.
+
+| Endpoint | Body | Returns |
+|---|---|---|
+| `POST /api/v1/auth/signup` | `{"email","password"}` | `201` with `{token, tokenType, expiresInSeconds, user}`; `409` if the email is taken |
+| `POST /api/v1/auth/login` | `{"email","password"}` | `200` with the same shape; `401` on a wrong email or password |
+| `GET /api/v1/auth/me` | — | The signed-in user (needs the bearer token) |
 
 ### Port conflicts
 
@@ -79,7 +92,7 @@ The dashboard is a single-page React 19 + TypeScript + Tailwind CSS v4 console, 
 - **Loading:** an animated skeleton shows during the first load and manual refreshes. Auto-refresh polls every 10 seconds in place without the skeleton, and pauses while the browser tab is hidden.
 - **Errors:** a failed request shows a banner with a Retry button.
 
-In development, Vite proxies `/api` to the backend and adds the Basic credentials on the server side. Set `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` if you changed them. In production, the Docker image bundles the dashboard into Spring Boot, so it's served from the same origin as the API, and the browser asks for the login once.
+In development, Vite proxies `/api` to the backend. In production, the Docker image bundles the dashboard into Spring Boot, so it's served from the same origin as the API. Either way, no CORS setup is needed.
 
 ## Read API
 
@@ -88,7 +101,13 @@ In development, Vite proxies `/api` to the backend and adds the Basic credential
 | `GET /api/v1/logs?limit=500` | The latest logs, newest first. `limit` is 1–2000 (default 500). |
 | `GET /api/v1/logs/summary` | `{"total":7,"critical":2,"standard":5}` |
 
-Both endpoints need the dashboard login, for example `curl -u admin:local-dev-password http://localhost:8080/api/v1/logs/summary`.
+Both endpoints need a signed-in account's token:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"your-password"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/logs/summary
+```
 
 ## Try it
 
@@ -162,8 +181,9 @@ Every value can be overridden with an environment variable:
 | `RABBITMQ_USERNAME` / `RABBITMQ_PASSWORD` / `RABBITMQ_VHOST` | `guest` / `guest` / `/` | replaced by `RABBITMQ_URL` |
 | `RABBITMQ_URL` | — | required, e.g. `amqps://user:pass@host/vhost` |
 | `INGEST_API_KEY` | `local-dev-ingest-key` | required, 12+ chars |
-| `DASHBOARD_USERNAME` | `admin` | `admin` |
-| `DASHBOARD_PASSWORD` | `local-dev-password` | required, 12+ chars |
+| `JWT_SECRET` | a fixed dev value | required, 32+ chars |
+| `JWT_EXPIRATION` | `PT12H` | `PT12H` |
+| `AUTH_ATTEMPTS_PER_MINUTE` | `10` | `10` |
 | `CRITICAL_MAX_CONSUMERS` / `STORAGE_MAX_CONSUMERS` | `8` / `4` | `4` / `2` |
 
 RabbitMQ's `guest` user only accepts connections from localhost.
@@ -181,8 +201,8 @@ The engine runs as one free Render web service. PostgreSQL and RabbitMQ come fro
 2. **RabbitMQ:** create a free "Little Lemur" instance on [CloudAMQP](https://www.cloudamqp.com) and copy its AMQP URL (`amqps://...`) into `RABBITMQ_URL`. The engine declares its exchange and queues on first start.
 3. **Render:** push this repo to GitHub. In Render, choose **New → Blueprint** and select the repo. `render.yaml` creates the service:
    - It asks for the four connection values above.
-   - It generates `INGEST_API_KEY` and `DASHBOARD_PASSWORD` for you. Find them under the service's **Environment** tab.
-4. **Open it:** go to `https://<service>.onrender.com`. Sign in as `admin` with the generated `DASHBOARD_PASSWORD`.
+   - It generates `INGEST_API_KEY` and `JWT_SECRET` for you. Find them under the service's **Environment** tab.
+4. **Open it:** go to `https://<service>.onrender.com` and create an account.
 5. **Connect producers:** give each producer the service URL plus `/api/v1/logs/submit`, and the `INGEST_API_KEY`.
 
 Free Render services sleep after 15 minutes without traffic, and the first request after that takes about a minute to wake the service. Producers with short timeouts (the AI Expense Ledger uses 2 seconds) drop the events sent during that wake-up.
