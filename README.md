@@ -215,13 +215,14 @@ src/main/java/com/logmonitoring/engine/
 ├── config/RabbitMQConfig.java          # exchange, queues, bindings, DLQ, converters, listener factories
 ├── controller/LogIngressController.java  # POST /submit
 ├── controller/LogQueryController.java    # GET ledger + summary
+├── controller/AuthController.java        # sign-up, sign-in, me
 ├── controller/GlobalExceptionHandler.java
 ├── consumer/LogConsumers.java          # critical alert + persistence listeners
 ├── dto/                                # request, response and message records
 ├── model/SystemLog.java                # JPA entity
 ├── model/Severity.java                 # severity → routing key mapping
 ├── repository/LogRepository.java
-└── security/                           # API-key filter, Basic auth, credential validation
+└── security/                           # API-key + JWT filters, sign-in rate limit, secrets
 src/main/resources/
 ├── application.yml
 ├── application-prod.yml                # used by the Docker image; secrets required
