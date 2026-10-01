@@ -1,5 +1,6 @@
 package com.logmonitoring.engine.consumer;
 
+import com.logmonitoring.engine.alert.CriticalAlertNotifier;
 import com.logmonitoring.engine.config.RabbitMQConfig;
 import com.logmonitoring.engine.dto.LogEvent;
 import com.logmonitoring.engine.model.SystemLog;
@@ -18,9 +19,11 @@ public class LogConsumers {
     private static final String ALERT_BORDER = "!".repeat(80);
 
     private final LogRepository logRepository;
+    private final CriticalAlertNotifier alertNotifier;
 
-    public LogConsumers(LogRepository logRepository) {
+    public LogConsumers(LogRepository logRepository, CriticalAlertNotifier alertNotifier) {
         this.logRepository = logRepository;
+        this.alertNotifier = alertNotifier;
     }
 
     @RabbitListener(queues = RabbitMQConfig.CRITICAL_ALERTS_QUEUE,
@@ -35,7 +38,6 @@ public class LogConsumers {
                 !!  Service    : {}
                 !!  Severity   : {}
                 !!  Occurred   : {} UTC
-                !!  Dispatched : on-call paging pipeline triggered
                 !!  Message    :
                 {}
                 {}""",
@@ -43,7 +45,11 @@ public class LogConsumers {
                 event.eventId(), event.serviceName(), event.severity(), event.timestamp(),
                 event.logMessage(),
                 ALERT_BORDER);
+        // Persist before emailing: if the save fails, the message is retried and only then emailed,
+        // so a retry never produces a second email for the same event.
         persist(event);
+        CriticalAlertNotifier.Outcome outcome = alertNotifier.notify(event);
+        alertTelemetry.info("Alert email for event {}: {}", event.eventId(), outcome);
     }
 
     @RabbitListener(queues = RabbitMQConfig.INFO_STORAGE_QUEUE,

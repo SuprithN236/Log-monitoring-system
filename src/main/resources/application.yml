@@ -78,6 +78,18 @@ log-engine:
     jwt-expiration: ${JWT_EXPIRATION:PT12H}
     # Sign-in and sign-up attempts allowed per client IP per minute.
     auth-attempts-per-minute: ${AUTH_ATTEMPTS_PER_MINUTE:10}
+  alerts:
+    email:
+      # Critical logs are emailed through Resend (https://resend.com) once both of these are set.
+      resend-api-key: ${RESEND_API_KEY:}
+      # Comma-separated recipients. With Resend's shared onboarding sender, only the email address
+      # of the Resend account owner can receive mail until a domain is verified.
+      to: ${ALERT_EMAIL_TO:}
+      from: ${ALERT_EMAIL_FROM:Log Monitor <onboarding@resend.dev>}
+      cooldown: ${ALERT_EMAIL_COOLDOWN:PT5M}
+      max-per-hour: ${ALERT_EMAIL_MAX_PER_HOUR:20}
+      # Linked from each email. Render sets RENDER_EXTERNAL_URL to the service's public URL.
+      dashboard-url: ${DASHBOARD_URL:${RENDER_EXTERNAL_URL:}}
 
 management:
   endpoints:

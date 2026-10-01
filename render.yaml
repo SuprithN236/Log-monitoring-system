@@ -24,3 +24,8 @@ services:
         generateValue: true
       - key: JWT_SECRET
         generateValue: true
+      # Optional: critical-log emails via Resend. Leave unset to keep alerts console-only.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ALERT_EMAIL_TO
+        sync: false

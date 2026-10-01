@@ -5,7 +5,7 @@ An asynchronous log processor built on Java 17, Spring Boot 3, RabbitMQ and Post
 ```
                                    ┌──────────── log.topic.exchange (topic) ────────────┐
 POST /api/v1/logs/submit ──publish─┤                                                     │
-   routing key = <service>.<sev>   │  *.critical ──► critical.alerts.queue ──► alert telemetry (console), then PostgreSQL
+   routing key = <service>.<sev>   │  *.critical ──► critical.alerts.queue ──► console alert, PostgreSQL, email (Resend)
                                    │  *.info     ──► info.storage.queue    ──► PostgreSQL (system_logs)
                                    └─────────────────────────────────────────────────────┘
                      failed after retries ──► log.dead-letter.exchange ──► log.dead-letter.queue
@@ -13,7 +13,7 @@ POST /api/v1/logs/submit ──publish─┤                                    
 
 | Severity   | Routing key             | Destination                               |
 |------------|-------------------------|-------------------------------------------|
-| `CRITICAL` | `<service>.critical`    | `critical.alerts.queue` → immediate alert, then persisted |
+| `CRITICAL` | `<service>.critical`    | `critical.alerts.queue` → persisted, then alert email |
 | `WARNING`  | `<service>.info`        | `info.storage.queue` → persisted          |
 | `INFO`     | `<service>.info`        | `info.storage.queue` → persisted          |
 
@@ -154,6 +154,31 @@ docker exec -it log-engine-postgres psql -U postgres -d log_monitoring_db \
 | `severity`    | `CRITICAL`, `WARNING` or `INFO` (case-insensitive)                       |
 | `logMessage`  | Required, up to 65,536 chars (stack traces welcome)                      |
 
+## Email alerts
+
+Critical logs are emailed through [Resend](https://resend.com)'s HTTPS API. It uses HTTPS rather than SMTP because free hosting tiers often block outbound SMTP ports. Emails are off until both `RESEND_API_KEY` and `ALERT_EMAIL_TO` are set; until then, critical logs only print a banner to the console.
+
+Each email contains:
+- the service name, time and event ID
+- the full message or stack trace, up to 4,000 characters
+- a link to the dashboard
+
+**Limits:**
+- **Per-service cooldown:** at most one email per service every 5 minutes (`ALERT_EMAIL_COOLDOWN`). Critical errors during the cooldown aren't lost; the next email says "+N more critical errors from this service since the last alert".
+- **Hourly cap:** at most 20 emails per hour across all services (`ALERT_EMAIL_MAX_PER_HOUR`), so an error storm can't use up the provider's daily quota.
+
+**Failure handling:**
+- **Failed sends:** a failed send never fails or retries the log message, so you can't get a stuck queue or a duplicate save. It also doesn't start the cooldown; the next critical error tries again and reports the missed one.
+- **Escaping:** log text is HTML-escaped, so a log message can't inject markup into the email.
+
+**Setup:**
+1. Create a free account at [resend.com](https://resend.com).
+2. Go to **API Keys → Create API Key** and choose "Sending access".
+3. Set `RESEND_API_KEY` to the key (it starts with `re_`).
+4. Set `ALERT_EMAIL_TO` to the email address you signed up to Resend with.
+
+Until you verify a domain in Resend, emails come from `onboarding@resend.dev` and can only go to your own Resend account's address. To send to other people, verify a domain in Resend and set `ALERT_EMAIL_FROM` to an address on it, e.g. `Log Monitor <alerts@yourdomain.com>`.
+
 ## Reliability and performance
 
 - **Durable topology:** the exchange and queues are durable, so queued logs survive a broker restart.
@@ -185,6 +210,11 @@ Every value can be overridden with an environment variable:
 | `JWT_EXPIRATION` | `PT12H` | `PT12H` |
 | `AUTH_ATTEMPTS_PER_MINUTE` | `10` | `10` |
 | `CRITICAL_MAX_CONSUMERS` / `STORAGE_MAX_CONSUMERS` | `8` / `4` | `4` / `2` |
+| `RESEND_API_KEY` | — (emails off) | optional |
+| `ALERT_EMAIL_TO` | — | comma-separated recipients |
+| `ALERT_EMAIL_FROM` | `Log Monitor <onboarding@resend.dev>` | same |
+| `ALERT_EMAIL_COOLDOWN` / `ALERT_EMAIL_MAX_PER_HOUR` | `PT5M` / `20` | same |
+| `DASHBOARD_URL` | — | defaults to Render's `RENDER_EXTERNAL_URL` |
 
 RabbitMQ's `guest` user only accepts connections from localhost.
 
@@ -212,6 +242,7 @@ Free Render services sleep after 15 minutes without traffic, and the first reque
 ```
 src/main/java/com/logmonitoring/engine/
 ├── LogMonitoringEngineApplication.java
+├── alert/                              # critical-alert emails: throttling, formatting, Resend client
 ├── config/RabbitMQConfig.java          # exchange, queues, bindings, DLQ, converters, listener factories
 ├── controller/LogIngressController.java  # POST /submit
 ├── controller/LogQueryController.java    # GET ledger + summary
